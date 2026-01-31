@@ -1,4 +1,5 @@
 import { Module, OnModuleInit } from '@nestjs/common';
+import { RedisThrottlerStorage } from '@nestjs-redis/throttler-storage';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
@@ -18,14 +19,22 @@ import { RolesModule } from './roles/roles.module';
 import { RedisModule } from './redis/redis.module';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { UserThrottlerGuard } from './common/guards/user-throttler.guard';
+
 import { HandlebarsAdapter } from '@nestjs-modules/mailer/dist/adapters/handlebars.adapter';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesSeederService } from './database/seeders/roles.seeder';
-import { SessionsModule } from './sessions/sessions.module';
+import { SessionModule } from './sessions/sessions.module';
 import { MessageModule } from './message/message.module';
 import { RewardsModule } from './rewards/rewards.module';
 import { ChainModule } from './chain/chain.module';
+import { TransferModule } from './transfer/transfer.module';
+import { RoomModule } from './room/room.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { SystemConfigModule } from './system-config/system-config.module';
+import { QueueModule } from './queue/queue.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -41,42 +50,64 @@ import { ChainModule } from './chain/chain.module';
       }),
       inject: [ConfigService],
     }),
-    ThrottlerModule.forRoot([
-      {
-        ttl: 60000, // 1 minute
-        limit: 10, // 10 requests
-      },
-    ]),
-    MailerModule.forRoot({
-      transport: {
-        host: process.env.MAIL_HOST,
-        port: parseInt(process.env.MAIL_PORT || ''),
-        secure: false,
-        auth: {
-          user: process.env.MAIL_USER,
-          pass: process.env.MAIL_PASSWORD,
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        throttlers: [
+          {
+            ttl: 60000,
+            limit: 10,
+          },
+        ],
+        storage: new RedisThrottlerStorage({
+          host: config.get('REDIS_HOST'),
+          port: config.get('REDIS_PORT'),
+          password: config.get('REDIS_PASSWORD'),
+          db: parseInt(config.get('REDIS_DB'), 10) || 0,
+        }),
+      }),
+    }),
+    MailerModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        transport: {
+          host: configService.get('MAIL_HOST'),
+          port: configService.get('MAIL_PORT'),
+          secure: false,
+          auth: {
+            user: configService.get('MAIL_USER'),
+            pass: configService.get('MAIL_PASSWORD'),
+          },
         },
-      },
-      defaults: {
-        from: process.env.MAIL_FROM,
-      },
-      template: {
-        dir: process.cwd() + '/templates',
-        adapter: new HandlebarsAdapter(),
-        options: {
-          strict: true,
+        defaults: {
+          from: `"No Reply" <${configService.get('MAIL_FROM')}>`,
         },
-      },
+        template: {
+          dir: process.cwd() + '/templates/',
+          adapter: new HandlebarsAdapter(),
+          options: {
+            strict: true,
+          },
+        },
+      }),
+      inject: [ConfigService],
     }),
     HealthModule,
-    UsersModule,
-    AuthModule,
     RedisModule,
+    QueueModule,
+    AuthModule,
+    UsersModule,
     RolesModule,
+    AdminModule,
     SessionsModule,
     MessageModule,
     RewardsModule,
     ChainModule,
+    TransferModule,
+    RoomModule,
+    NotificationsModule,
+    SystemConfigModule,
   ],
   controllers: [AppController],
   providers: [
@@ -87,8 +118,9 @@ import { ChainModule } from './chain/chain.module';
     },
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard, // Apply rate limiting globally
+      useClass: UserThrottlerGuard, // Apply rate limiting globally (User + IP)
     },
+
   ],
 })
 export class AppModule implements OnModuleInit {

@@ -1,10 +1,11 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { MessageService } from './message.service';
 import { MessageController } from './message.controller';
 import { Message } from './entities/message.entity';
 import { MessageEditHistory } from './entities/message-edit-history.entity';
 import { MessageReaction } from './entities/message-reaction.entity';
+import { Attachment } from './entities/attachment.entity';
 import { MessageOwnershipGuard } from './guards/message-ownership.guard';
 import {
   MessageRepository,
@@ -20,12 +21,19 @@ import { CacheModule } from '../cache/cache.module';
 import { MessagesGateway } from './gateways/messages.gateway';
 import { ProfanityFilterService } from './services/profanity-filter.service';
 import { MessageBroadcastService } from './services/message-broadcast.service';
+import { UsersModule } from '../users/users.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Message, MessageEditHistory, MessageReaction]),
+    TypeOrmModule.forFeature([Message, MessageEditHistory, MessageReaction, Attachment]),
+    StorageModule,
     RedisModule,
     CacheModule,
+    UsersModule,
+    forwardRef(() => NotificationsModule),
   ],
   providers: [
     MessageService,

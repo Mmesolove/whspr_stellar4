@@ -11,13 +11,18 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseInterceptors,
+  UploadedFile,
+  Res,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { MessageService } from './message.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { MessageOwnershipGuard } from './guards/message-ownership.guard';
 import { MessageResponseDto } from './dto/message-response.dto';
 import { MessageEditHistoryDto } from './dto/message-edit-history.dto';
+import { GetMessagesDto } from './dto/get-messages.dto';
 import { MessagesGateway } from './gateways/messages.gateway';
 
 @Controller('messages')
@@ -86,14 +91,12 @@ export class MessageController {
   @Get('rooms/:roomId')
   async getRoomMessages(
     @Param('roomId') roomId: string,
-    @Query('page') page: number = 1,
-    @Query('limit') limit: number = 50,
+    @Query() query: GetMessagesDto,
   ): Promise<{
     messages: MessageResponseDto[];
-    total: number;
-    page: number;
+    nextCursor: string | null;
   }> {
-    return this.messageService.getRoomMessages(roomId, page, limit);
+    return this.messageService.getRoomMessages(roomId, query);
   }
 
   @Get(':id')
@@ -199,5 +202,27 @@ export class MessageController {
     this.messagesGateway.broadcastToRoom(message.roomId, 'message-restored', restoredMessage);
 
     return restoredMessage;
+  }
+
+
+  @Post(':id/upload')
+  @UseInterceptors(FileInterceptor('file'))
+  @HttpCode(HttpStatus.CREATED)
+  async uploadFile(
+    @Param('id') messageId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Request() req,
+    @Query('storage') storage: 'IPFS' | 'ARWEAVE' = 'IPFS',
+  ) {
+    if (!file) {
+      throw new Error('No file provided');
+    }
+    return this.messageService.uploadFile(messageId, file, req.user.id, storage);
+  }
+
+  @Get('attachments/:id')
+  async getAttachment(@Param('id') id: string, @Res() res) {
+    const url = await this.messageService.getAttachmentUrl(id);
+    return res.redirect(url);
   }
 }

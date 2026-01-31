@@ -12,6 +12,7 @@ import { User } from '../../user/entities/user.entity';
 import { MessageEditHistory } from './message-edit-history.entity';
 import { MessageReaction } from './message-reaction.entity';
 import { MessageType } from '../enums/message-type.enum';
+import { Attachment } from './attachment.entity';
 
 @Entity('messages')
 @Index(['conversationId', 'createdAt'])
@@ -89,4 +90,22 @@ export class Message {
     eager: false,
   })
   reactions: MessageReaction[];
+
+  @Column({ nullable: true })
+  parentId: string | null;
+
+  @ManyToOne(() => Message, (message) => message.replies, {
+    onDelete: 'CASCADE',
+    nullable: true,
+  })
+  parent: Message;
+
+  @OneToMany(() => Message, (message) => message.parent)
+  replies: Message[];
+
+  @OneToMany(() => Attachment, (attachment) => attachment.message, {
+    cascade: true,
+    eager: true,
+  })
+  attachments: Attachment[];
 }
